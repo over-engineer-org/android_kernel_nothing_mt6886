@@ -1,4 +1,4 @@
-KERNEL_DIR=kernel-5.15
+KERNEL_DIR=common
 
 . ${ROOT_DIR}/${KERNEL_DIR}/build.config.common
 . ${ROOT_DIR}/${KERNEL_DIR}/build.config.lto_thin
