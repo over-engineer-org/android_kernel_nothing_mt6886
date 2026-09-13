@@ -321,6 +321,7 @@ static inline u32 rotr(u32 val, int bits)
 #define Gamma0(x)       (S(x, 7) ^ S(x, 18) ^ R(x, 3))
 #define Gamma1(x)       (S(x, 17) ^ S(x, 19) ^ R(x, 10))
 #ifndef MIN
+#undef MIN
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 

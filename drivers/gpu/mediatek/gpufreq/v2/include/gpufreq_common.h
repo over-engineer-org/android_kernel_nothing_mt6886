@@ -36,9 +36,11 @@
 		.val = _val,                   \
 	}
 #ifndef MAX
+#undef MAX
 #define MAX(x, y) (((x) < (y)) ? (y) : (x))
 #endif
 #ifndef MIN
+#undef MIN
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 

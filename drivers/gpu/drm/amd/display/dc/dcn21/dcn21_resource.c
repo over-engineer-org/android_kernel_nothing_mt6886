@@ -307,9 +307,11 @@ struct _vcs_dpi_soc_bounding_box_st dcn2_1_soc = {
 };
 
 #ifndef MAX
+#undef MAX
 #define MAX(X, Y) ((X) > (Y) ? (X) : (Y))
 #endif
 #ifndef MIN
+#undef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #endif
 

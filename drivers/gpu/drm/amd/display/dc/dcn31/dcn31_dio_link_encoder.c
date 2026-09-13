@@ -64,6 +64,7 @@
 			dm_write_reg(CTX, AUX_REG(reg_name), val)
 
 #ifndef MIN
+#undef MIN
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #endif
 

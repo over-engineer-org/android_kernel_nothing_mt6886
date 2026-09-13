@@ -26,7 +26,9 @@
 
 /* MACRO definitions */
 #ifndef MIN
+#undef MAX
 #define MAX(X, Y) ((X) >= (Y) ? (X) : (Y))
+#undef MIN
 #define MIN(X, Y) ((X) <= (Y) ? (X) : (Y))
 #endif
 
