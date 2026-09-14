@@ -13,7 +13,7 @@ struct lz4k_ctx {
 static int lz4k_init(struct crypto_tfm *tfm)
 {
 	struct lz4k_ctx *ctx = crypto_tfm_ctx(tfm);
-
+	pr_info("lz4k init called \n");
 	ctx->lz4k_comp_mem = vmalloc(PAGE_SIZE*2);
 	if (!ctx->lz4k_comp_mem)
 		return -ENOMEM;
