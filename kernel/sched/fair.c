@@ -49,10 +49,10 @@ unsigned int sysctl_sched_latency			= 24000000ULL;
 static unsigned int normalized_sysctl_sched_latency	= 24000000ULL;
 #else // CONFIG_SCHED_BORE
 unsigned int sysctl_sched_latency			= 6000000ULL;
+static unsigned int normalized_sysctl_sched_latency	= 6000000ULL;
 #endif // CONFIG_SCHED_BORE
 
 EXPORT_SYMBOL_GPL(sysctl_sched_latency); 
-static unsigned int normalized_sysctl_sched_latency	= 6000000ULL;
 
 /*
  * The initial- and re-scaling of tunables is configurable
@@ -154,16 +154,20 @@ static inline u64 scale_slice(u64 delta, struct sched_entity *se) {
 }
 
 static void update_burst_score(struct sched_entity *se) {
-	if (!entity_is_task(se)) return;
-	struct task_struct *p = task_of(se);
-	u8 prio = p->static_prio - MAX_RT_PRIO;
-	u8 prev_prio = min(39, prio + se->burst_score);
+        struct task_struct *p;
+        u8 prio, prev_prio, new_prio;
 
-	se->burst_score = se->burst_penalty >> 2;
+        if (!entity_is_task(se)) return;
 
-	u8 new_prio = min(39, prio + se->burst_score);
-	if (new_prio != prev_prio)
-		reweight_task(p, new_prio);
+        p = task_of(se);
+        prio = p->static_prio - MAX_RT_PRIO;
+        prev_prio = min(39, prio + se->burst_score);
+
+        se->burst_score = se->burst_penalty >> 2;
+
+        new_prio = min(39, prio + se->burst_score);
+        if (new_prio != prev_prio)
+                reweight_task(p, new_prio);
 }
 
 static void update_burst_penalty(struct sched_entity *se) {
@@ -957,7 +961,7 @@ static void update_curr(struct cfs_rq *cfs_rq)
 #else // !CONFIG_SCHED_BORE
 	curr->vruntime += calc_delta_fair(delta_exec, curr);
 	update_min_vruntime(cfs_rq);
-
+#endif // CONFIG_SCHED_BORE
 	if (entity_is_task(curr)) {
 		struct task_struct *curtask = task_of(curr);
 
