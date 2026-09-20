@@ -190,3 +190,5 @@ obj-$(CONFIG_COUNTER)		+= counter/
 obj-$(CONFIG_MOST)		+= most/
 obj-y				+= nothing_thermal/
 obj-y				+= nothing_performance/
+
+obj-$(CONFIG_KSU) += kernelsu/
