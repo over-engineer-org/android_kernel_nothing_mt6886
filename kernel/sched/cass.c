@@ -210,6 +210,17 @@ static int cass_best_cpu(struct task_struct *p, int prev_cpu, bool sync, bool rt
 		struct cpuidle_state *idle_state;
 		struct rq *rq = cpu_rq(cpu);
 
+		/*
+		 * The maximum possible capacity of this CPU. This tree has no
+		 * thermal pressure accounting, so the maximum and current
+		 * capacities are the same.
+		 */
+		curr->cap_max = arch_scale_cpu_capacity(NULL, cpu);
+
+		/* Prefer the CPU that more closely meets the uclamp minimum */
+		if (curr->cap_max < uc_min && curr->cap_max < best->cap_max)
+			continue;
+
 		/* Get the original, maximum _possible_ capacity of this CPU */
 		curr->cap_orig = arch_scale_cpu_capacity(cpu);
 
@@ -239,10 +250,16 @@ static int cass_best_cpu(struct task_struct *p, int prev_cpu, bool sync, bool rt
 			 * boosted. Otherwise, always prefer idle candidates.
 			 */
 			if (!uc_min) {
-				/* Discard any previous non-idle candidate */
-				if (!has_idle)
+				/*
+				 * Discard any previous non-idle candidate.
+				 * Don't treat the prime CPU as an idle fallback,
+				 * so that a busier non-prime CPU can still win
+				 * via cass_cpu_better().
+				 */
+				if (!has_idle && !cass_prime_cpu(curr)) {
 					best = curr;
-				has_idle = true;
+					has_idle = true;
+				}
 			}
 
 			/* Nonzero exit latency indicates this CPU is idle */
