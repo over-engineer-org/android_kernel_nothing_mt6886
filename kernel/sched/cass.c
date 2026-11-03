@@ -79,6 +79,21 @@ void cass_cpu_util(struct cass_cpu_cand *c, int this_cpu, bool sync)
 	c->cap_no_therm = c->cap_orig - min(c->hard_util, c->cap_orig - 1);
 }
 
+/*
+ * Returns true if @c is a CPU with the maximum possible original capacity and
+ * there's only one such CPU in the system (i.e., if @c is the prime CPU).
+ */
+static __always_inline
+bool cass_prime_cpu(const struct cass_cpu_cand *c)
+{
+	/*
+	 * On arm64, the prime CPU is always the last CPU. If it doesn't have
+	 * the same original capacity as the prior CPU, then it is prime.
+	 */
+	return c->cpu == nr_cpu_ids - 1 &&
+	       arch_scale_cpu_capacity(nr_cpu_ids - 2) != SCHED_CAPACITY_SCALE;
+}
+
 /* Returns true if @a is a better CPU than @b */
 static __always_inline
 bool cass_cpu_better(const struct cass_cpu_cand *a,
@@ -115,6 +130,7 @@ bool cass_cpu_better(const struct cass_cpu_cand *a,
 	/* Prefer the CPU that isn't the single fastest one in the system */
 	if (cass_cmp(cass_prime_cpu(b), cass_prime_cpu(a)))
 		goto done;
+
 
 	/* Prefer the CPU with lower relative utilization */
 	if (cass_cmp(b->util, a->util))
@@ -275,20 +291,25 @@ static int cass_best_cpu(struct task_struct *p, int prev_cpu, bool sync, bool rt
 		 * sync wakes, treat the current CPU as idle if @current is the
 		 * only running task.
 		 */
+
+		curr->cpu = cpu;
+
 		if ((sync && cpu == this_cpu && rq->nr_running == 1) ||
 		    available_idle_cpu(cpu) || sched_idle_cpu(cpu)) {
 			/*
-			 * A non-idle candidate may be better when @p is uclamp
-			 * boosted. Otherwise, always prefer idle candidates.
+			 * A non-idle candidate may be better for energy
+			 * efficiency when @p is uclamp boosted, or when the
+			 * only idle candidate found so far is the prime CPU.
+			 * Otherwise, prefer idle candidates.
 			 */
-			if (!uc_min) {
+			if (!uc_min && !cass_prime_cpu(curr)){
 				/*
 				 * Discard any previous non-idle candidate.
 				 * Don't treat the prime CPU as an idle fallback,
 				 * so that a busier non-prime CPU can still win
 				 * via cass_cpu_better().
 				 */
-				if (!has_idle && !cass_prime_cpu(curr)) {
+				if (!has_idle) {
 					best = curr;
 					has_idle = true;
 				}
@@ -311,7 +332,6 @@ static int cass_best_cpu(struct task_struct *p, int prev_cpu, bool sync, bool rt
 		}
 
 		/* Get this CPU's capacity and utilization */
-		curr->cpu = cpu;
 		cass_cpu_util(curr, this_cpu, sync);
 
 		/*
