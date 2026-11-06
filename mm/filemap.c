@@ -897,6 +897,7 @@ noinline int __add_to_page_cache_locked(struct page *page,
 	page->mapping = mapping;
 	page->index = offset;
 
+	trace_android_vh_filemap_add_to_page_cache(mapping, page, offset);
 	if (!huge) {
 		error = mem_cgroup_charge(page, NULL, gfp);
 		if (error)
@@ -2442,6 +2443,8 @@ static int filemap_update_page(struct kiocb *iocb,
 {
 	int error;
 
+	trace_android_vh_filemap_update_page(mapping, page, iocb->ki_filp);
+
 	if (iocb->ki_flags & IOCB_NOWAIT) {
 		if (!filemap_invalidate_trylock_shared(mapping))
 			return -EAGAIN;
@@ -2934,6 +2937,8 @@ unlock:
 static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 				     struct file **fpin)
 {
+	struct task_struct *tsk = NULL;
+
 	if (trylock_page(page))
 		return 1;
 
@@ -2946,6 +2951,7 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 		return 0;
 
 	*fpin = maybe_unlock_mmap_for_io(vmf, *fpin);
+	trace_android_vh_lock_folio_drop_mmap_start(&tsk, vmf, page, *fpin);
 	if (vmf->flags & FAULT_FLAG_KILLABLE) {
 		if (__lock_page_killable(page)) {
 			/*
@@ -2956,10 +2962,13 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 			 */
 			if (*fpin == NULL)
 				mmap_read_unlock(vmf->vma->vm_mm);
+			trace_android_vh_lock_folio_drop_mmap_end(false, &tsk, vmf, page, *fpin);
 			return 0;
 		}
 	} else
 		__lock_page(page);
+
+	trace_android_vh_lock_folio_drop_mmap_end(true, &tsk, vmf, page, *fpin);
 	return 1;
 }
 
@@ -3014,6 +3023,7 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 	trace_android_vh_tune_mmap_readaround(ra->ra_pages, vmf->pgoff,
 			&ra->start, &ra->size, &ra->async_size);
 	ractl._index = ra->start;
+	trace_android_vh_page_cache_read(file->f_inode, ra->start, ra->size);
 	do_page_cache_ra(&ractl, ra->size, ra->async_size);
 	return fpin;
 }
@@ -3032,6 +3042,11 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 	struct file *fpin = NULL;
 	unsigned int mmap_miss;
 	pgoff_t offset = vmf->pgoff;
+	bool skip = false;
+
+	trace_android_vh_do_async_mmap_readahead(vmf, page, &skip);
+	if (skip)
+		return fpin;
 
 	/* If we don't want any read-ahead, don't bother */
 	if (vmf->vma->vm_flags & VM_RAND_READ || !ra->ra_pages)
@@ -3244,6 +3259,7 @@ page_not_uptodate:
 	 * and we need to check for errors.
 	 */
 	fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+	trace_android_vh_page_cache_read(file->f_inode, offset, 1);
 	error = filemap_read_page(file, mapping, page);
 	if (fpin)
 		goto out_retry;
@@ -3384,12 +3400,14 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 	vm_fault_t ret = (vmf->flags & FAULT_FLAG_SPECULATIVE) ?
 		VM_FAULT_RETRY : 0;
 	pgoff_t first_pgoff = 0;
+	pgoff_t orig_start_pgoff = start_pgoff;
 
 	/* filemap_map_pages() is called within an rcu read lock already. */
 	head = first_map_page(mapping, &xas, end_pgoff);
 	if (!head)
 		return ret;
 	first_pgoff = xas.xa_index;
+	orig_start_pgoff = xas.xa_index;
 
 	if (!(vmf->flags & FAULT_FLAG_SPECULATIVE) &&
 	    filemap_map_pmd(vmf, head))
@@ -3437,6 +3455,7 @@ unlock:
 	vmf->pte = NULL;
 	WRITE_ONCE(file->f_ra.mmap_miss, mmap_miss);
 	trace_android_vh_filemap_map_pages(file, first_pgoff, last_pgoff, ret);
+	trace_android_vh_filemap_map_pages_range(file, orig_start_pgoff, last_pgoff, ret);
 	return ret;
 }
 EXPORT_SYMBOL(filemap_map_pages);
@@ -3492,7 +3511,7 @@ int generic_file_mmap(struct file *file, struct vm_area_struct *vma)
  */
 int generic_file_readonly_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	if ((vma->vm_flags & VM_SHARED) && (vma->vm_flags & VM_MAYWRITE))
+	if (vma_is_shared_maywrite(vma))
 		return -EINVAL;
 	return generic_file_mmap(file, vma);
 }
@@ -3535,6 +3554,8 @@ static struct page *do_read_cache_page(struct address_space *mapping,
 {
 	struct page *page;
 	int err;
+
+	trace_android_vh_page_cache_read(mapping->host, index, 1);
 repeat:
 	page = find_get_page(mapping, index);
 	if (!page) {

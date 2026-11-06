@@ -689,6 +689,62 @@ static ssize_t usb_charger_en_proc_write(struct file *file,
 }
 PROC_FOPS_RW(usb_charger_en);
 
+static int charging_enabled_proc_show(struct seq_file *m, void *v)
+{
+	struct nt_chg_info *nci = m->private;
+
+	seq_printf(m, "%d\n", !nci->cmd_discharging);
+	return 0;
+}
+
+static ssize_t charging_enabled_proc_write(struct file *file,
+	const char __user *buffer, size_t count, loff_t *pos)
+{
+	int enabled, len;
+	char desc[32];
+	struct mtk_charger *info;
+	struct nt_chg_info *nci = PDE_DATA(file_inode(file));
+
+	if (!nci || !nci->info)
+		return -EINVAL;
+	if (count <= 0)
+		return -EINVAL;
+
+	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	if (copy_from_user(desc, buffer, len))
+		return -EFAULT;
+	desc[len] = '\0';
+
+	info = nci->info;
+
+	if (sscanf(desc, "%d", &enabled) == 1) {
+		int cmd_discharging = !enabled;   /* invert: enabled=1 -> discharging=0 */
+		int i;
+		struct chg_alg_device *alg;
+
+		nci->cmd_discharging = cmd_discharging;
+		if (cmd_discharging == 1) {
+			for (i = 0; i < MAX_ALG_NO; i++) {
+				alg = info->alg[i];
+				if (alg == NULL)
+					continue;
+				chg_alg_stop_algo(alg);
+			}
+			info->cmd_discharging = true;
+			charger_dev_enable(info->chg1_dev, false);
+			charger_dev_do_event(info->chg1_dev, EVENT_DISCHARGE, 0);
+		} else {
+			info->cmd_discharging = false;
+			charger_dev_enable(info->chg1_dev, true);
+			charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
+		}
+		pr_info("%s: enabled=%d\n", __func__, enabled);
+	}
+
+	return count;
+}
+PROC_FOPS_RW(charging_enabled);
+
 static int temp_proc_show(struct seq_file *m, void *v)
 {
 	return 0;
@@ -1467,6 +1523,7 @@ PROC_FOPS_RW(area_id);
 
 const struct nt_proc entries[] = {
 	PROC_ENTRY(usb_charger_en),
+	PROC_ENTRY(charging_enabled),
 	PROC_ENTRY(voltage_adc),
 	PROC_ENTRY(usb_temp),
 	PROC_ENTRY(usb_real_type),
